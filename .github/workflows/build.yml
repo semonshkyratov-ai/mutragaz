@@ -1,0 +1,41 @@
+name: Build APK
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Build APK
+        run: |
+          mkdir -p app/src/main/assets
+          cp index.html app/src/main/assets/
+          echo "[]" > app/src/main/assets/apps.json
+          mkdir -p app/src/main/java/com/magazin
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.magazin">' '<uses-permission android:name="android.permission.INTERNET"/>' '<application android:label="Магазин" android:usesCleartextTraffic="true">' '<activity android:name=".MainActivity" android:exported="true">' '<intent-filter>' '<action android:name="android.intent.action.MAIN"/>' '<category android:name="android.intent.category.LAUNCHER"/>' '</intent-filter>' '</activity>' '</application>' '</manifest>' > app/src/main/AndroidManifest.xml
+          printf '%s\n' 'package com.magazin;' 'import android.app.Activity;' 'import android.os.Bundle;' 'import android.webkit.WebView;' 'import android.webkit.WebSettings;' 'public class MainActivity extends Activity {' '@Override' 'protected void onCreate(Bundle b){' 'super.onCreate(b);' 'WebView w=new WebView(this);' 'WebSettings s=w.getSettings();' 's.setJavaScriptEnabled(true);' 's.setAllowFileAccess(true);' 's.setDomStorageEnabled(true);' 'w.loadUrl("file:///android_asset/index.html");' 'setContentView(w);' '}' '}' > app/src/main/java/com/magazin/MainActivity.java
+          printf '%s\n' "apply plugin: 'com.android.application'" "android {" "    namespace 'com.magazin'" "    compileSdk 34" "    defaultConfig {" "        applicationId 'com.magazin'" "        minSdk 21" "        targetSdk 34" "        versionCode 1" "        versionName '1.0'" "    }" "    buildTypes {" "        release {" "            minifyEnabled false" "        }" "    }" "}" "dependencies {}" > app/build.gradle
+          printf '%s\n' "buildscript {" "    repositories { google(); mavenCentral() }" "    dependencies { classpath 'com.android.tools.build:gradle:8.1.0' }" "}" "allprojects { repositories { google(); mavenCentral() } }" > build.gradle
+          printf '%s\n' 'rootProject.name = "Magazin"' "include ':app'" > settings.gradle
+          printf '%s\n' "android.useAndroidX=true" "org.gradle.jvmargs=-Xmx2048m" > gradle.properties
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          gradle wrapper --gradle-version 8.4
+          ./gradlew assembleRelease --no-daemon
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release-unsigned.apk out/magazin.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magazin-apk
+          path: out/magazin.apk
+      - uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          files: out/magazin.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
